@@ -5,6 +5,12 @@ Entry point to the program
 - Generate Potential Guides
 - Run through biophysical model and report results
 """
+
+def warn(*args, **kwargs):
+    pass
+import warnings
+warnings.warn = warn
+
 import os
 import logging
 import argparse
