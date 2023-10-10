@@ -1,13 +1,15 @@
 """
 Module responsible for calculating the per guide binding
 """
-import os
+import os, sys
 import logging
+from diskcache.core import Disk
 import numpy as np
 import scipy.io
 from Bio import SeqIO
 from numba import jit
 from tqdm import tqdm
+from diskcache import Cache
 
 class CasModel():
     """
@@ -200,23 +202,48 @@ class CasModel():
                 the first N-3 nt of a guide strand plus a PAM site sequence.
         """
         # Create a list of all possible N-mers
-        all_possible_mers = self._mers(length)
+        all_possible_mers = set(self._mers(length))
 
         # Search through the genome and add nucleotide positions for match to an N-mer
-        positions_at_mers = {}
-        for mer in all_possible_mers:
-            positions_at_mers[mer] = []
+        class DictCache(Cache):
+            def __init__(self):
+                super().__init__()
+                self._keys = []
 
+            def __getitem__(self, key):
+                try:
+                    return super().__getitem__(key)
+                except KeyError:
+                    return []
+            
+            def __setitem__(self, key, value):
+                self._keys.append(key)
+                return super().__setitem__(key, value)
+            
+            def __delitem__(self, key, retry=True):
+                self._keys.remove(key)
+                return super().__delitem__(key, retry)
+            
+            def keys(self):
+                return self._keys
+
+        # positions_at_mers = {}
+        positions_at_mers = DictCache()
         counter = 0
-
         non_nucleotide_count = 0 # Added
         while counter < (len(full_sequence)-length):
+            if counter % 1024 == 0:
+                pct = int(counter/(len(full_sequence)-length)*100*10**2)/(10**2)
+                sys.stderr.write(f"\rpopulating kmer map: {pct:04.2f}")
             word = full_sequence[counter: counter+length]
-            try:
-                positions_at_mers[word].append(counter+length)
-            except KeyError:
+            if word not in all_possible_mers:
                 non_nucleotide_count += 1
+            else:
+                _pos = positions_at_mers.get(word, [])
+                _pos.append(counter+length)
+                positions_at_mers[word] = _pos
             counter += 1
+        sys.stderr.write("\n")
 
         if non_nucleotide_count > 0:
             self._logger.error('%d k-mers with non-nucleotide characters identified', non_nucleotide_count)

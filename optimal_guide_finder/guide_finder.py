@@ -107,6 +107,9 @@ def initialize_logger(output_file, logging_level=logging.INFO):
     console_logger.setLevel(logging_level)
     logging.getLogger().addHandler(console_logger)
 
+from memory_profiler import profile
+
+@profile
 def main():
     """
     Main workflow
